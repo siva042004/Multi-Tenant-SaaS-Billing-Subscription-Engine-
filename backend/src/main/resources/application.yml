@@ -6,7 +6,6 @@ spring:
     url: jdbc:mysql://localhost:3306/billing?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC
     username: root
     password: root
-    driver-class-name: com.mysql.cj.jdbc.Driver
 
     hikari:
       maximum-pool-size: 10
@@ -17,7 +16,6 @@ spring:
     open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
 
 server:
