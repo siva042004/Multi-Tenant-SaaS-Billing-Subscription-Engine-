@@ -133,19 +133,26 @@ jobs:
 
   deploy:
     needs: [build-images, integration-test]
-    if: ${{ github.ref == 'refs/heads/main' && secrets.KUBE_CONFIG != '' }}
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
+ 
+      - name: Skip deploy if KUBE_CONFIG secret missing
+        if: ${{ secrets.KUBE_CONFIG == '' }}
+        run: |
+          echo "KUBE_CONFIG secret is not defined. Skipping deploy."
 
       - name: Configure kubectl
+        if: ${{ secrets.KUBE_CONFIG != '' }}
         uses: azure/k8s-set-context@v4
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
 
       - name: Apply manifests
+        if: ${{ secrets.KUBE_CONFIG != '' }}
         run: |
           kubectl apply -f k8s/00-namespace.yaml
           kubectl apply -f k8s/01-config-secrets.yaml
@@ -154,13 +161,13 @@ jobs:
           kubectl apply -f k8s/04-frontend.yaml
 
       - name: Compute lowercase owner
+        if: ${{ secrets.KUBE_CONFIG != '' }}
         id: owner
         run: |
           echo "owner_lower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Roll out new images
-        run: |
-          kubectl set image deployment/billing-backend billing-backend=ghcr.io/${{ steps.owner.outputs.owner_lower }}/billing-backend:${{ github.sha }} -n billing-engine
+        if: ${{ secrets.KUBE_CONFIG != '' }}
           kubectl set image deployment/billing-frontend billing-frontend=ghcr.io/${{ steps.owner.outputs.owner_lower }}/billing-frontend:${{ github.sha }} -n billing-engine
           kubectl rollout status deployment/billing-backend -n billing-engine
           kubectl rollout status deployment/billing-frontend -n billing-engine
