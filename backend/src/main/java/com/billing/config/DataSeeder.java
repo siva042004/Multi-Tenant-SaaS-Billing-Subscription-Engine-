@@ -23,21 +23,14 @@ public class DataSeeder {
                                    TenantRepository tenantRepository,
                                    SubscriptionRepository subscriptionRepository) {
         return args -> {
-            if (planRepository.count() == 0) {
-                planRepository.saveAll(List.of(
-                        new Plan("BASIC", "price_basic_demo", "Basic", new BigDecimal("10.00"), 5),
-                        new Plan("PRO", "price_pro_demo", "Pro", new BigDecimal("25.00"), 20),
-                        new Plan("ENTERPRISE", "price_enterprise_demo", "Enterprise", new BigDecimal("99.00"), 100)
-                ));
-            }
+            Plan basic = ensurePlan(planRepository, "BASIC", "price_basic_demo", "Basic", new BigDecimal("10.00"), 5);
+            Plan pro = ensurePlan(planRepository, "PRO", "price_pro_demo", "Pro", new BigDecimal("25.00"), 20);
+            Plan enterprise = ensurePlan(planRepository, "ENTERPRISE", "price_enterprise_demo", "Enterprise", new BigDecimal("99.00"), 100);
 
-            if (tenantRepository.count() == 0) {
-                Tenant acme = tenantRepository.save(new Tenant("Acme Corp", "acme@example.com", "cus_acme_demo"));
-                Tenant globex = tenantRepository.save(new Tenant("Globex", "globex@example.com", "cus_globex_demo"));
+            Tenant acme = ensureTenant(tenantRepository, "Acme Corp", "acme@example.com", "cus_acme_demo");
+            Tenant globex = ensureTenant(tenantRepository, "Globex", "globex@example.com", "cus_globex_demo");
 
-                Plan basic = planRepository.findByCode("BASIC").orElseThrow();
-                Plan pro = planRepository.findByCode("PRO").orElseThrow();
-
+            if (subscriptionRepository.count() == 0) {
                 Instant now = Instant.now();
                 subscriptionRepository.saveAll(List.of(
                         createSubscription(acme, basic, "sub_acme_basic", Subscription.Status.ACTIVE, now.minusSeconds(86400 * 30), now.plusSeconds(86400 * 30)),
@@ -45,6 +38,17 @@ public class DataSeeder {
                 ));
             }
         };
+    }
+
+    private Plan ensurePlan(PlanRepository planRepository, String code, String stripePriceId, String name,
+                            BigDecimal monthlyPrice, Integer seatLimit) {
+        return planRepository.findByCode(code).orElseGet(() -> planRepository.save(
+                new Plan(code, stripePriceId, name, monthlyPrice, seatLimit)));
+    }
+
+    private Tenant ensureTenant(TenantRepository tenantRepository, String name, String email, String stripeCustomerId) {
+        return tenantRepository.findByStripeCustomerId(stripeCustomerId)
+                .orElseGet(() -> tenantRepository.save(new Tenant(name, email, stripeCustomerId)));
     }
 
     private Subscription createSubscription(Tenant tenant, Plan plan, String stripeSubscriptionId,

@@ -1,18 +1,5 @@
 package com.billing.service;
 
-import com.billing.dto.UpgradeRequest;
-import com.billing.entity.Plan;
-import com.billing.entity.Subscription;
-import com.billing.entity.Tenant;
-import com.billing.repository.PlanRepository;
-import com.billing.repository.SubscriptionRepository;
-import com.billing.repository.TenantRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -23,6 +10,20 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import com.billing.entity.Plan;
+import com.billing.entity.Subscription;
+import com.billing.entity.Tenant;
+import com.billing.repository.PlanRepository;
+import com.billing.repository.SubscriptionRepository;
+import com.billing.repository.TenantRepository;
 
 /**
  * Verifies that concurrent operations on the same subscription (e.g. a user
@@ -37,16 +38,21 @@ class SubscriptionConcurrencyTest {
     @Autowired private TenantRepository tenantRepository;
     @Autowired private PlanRepository planRepository;
     @Autowired private SubscriptionRepository subscriptionRepository;
+    @Autowired private PlatformTransactionManager transactionManager;
 
     private UUID subscriptionId;
 
     @BeforeEach
     void setup() {
-        Tenant tenant = tenantRepository.save(new Tenant("Acme Inc", "billing@acme.test", "cus_test123"));
+        Tenant tenant = tenantRepository.findByStripeCustomerId("cus_test123")
+                .orElseGet(() -> tenantRepository.save(new Tenant("Acme Inc Test", "billing@acme.test", "cus_test123")));
 
-        Plan basic = planRepository.save(new Plan("BASIC", "price_basic", "Basic", new BigDecimal("29.00"), 5));
-        planRepository.save(new Plan("PRO", "price_pro", "Pro", new BigDecimal("99.00"), 25));
-        planRepository.save(new Plan("ENTERPRISE", "price_ent", "Enterprise", new BigDecimal("299.00"), 100));
+        Plan basic = planRepository.findByCode("BASIC")
+                .orElseGet(() -> planRepository.save(new Plan("BASIC", "price_basic", "Basic", new BigDecimal("29.00"), 5)));
+        planRepository.findByCode("PRO")
+                .orElseGet(() -> planRepository.save(new Plan("PRO", "price_pro", "Pro", new BigDecimal("99.00"), 25)));
+        planRepository.findByCode("ENTERPRISE")
+                .orElseGet(() -> planRepository.save(new Plan("ENTERPRISE", "price_ent", "Enterprise", new BigDecimal("299.00"), 100)));
 
         Subscription sub = new Subscription();
         sub.setTenant(tenant);
@@ -73,6 +79,7 @@ class SubscriptionConcurrencyTest {
         Subscription initial = subscriptionRepository.findById(subscriptionId).orElseThrow();
         Long staleVersion = initial.getVersion();
 
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch go = new CountDownLatch(1);
@@ -86,16 +93,18 @@ class SubscriptionConcurrencyTest {
             try {
                 ready.countDown();
                 go.await();
-                Subscription locked = subscriptionRepository.findByIdForUpdate(subscriptionId).orElseThrow();
-                if (!staleVersion.equals(locked.getVersion())) {
-                    conflictCount.incrementAndGet();
-                    return;
-                }
-                Plan pro = planRepository.findByCode("PRO").orElseThrow();
-                locked.setPlan(pro);
-                locked.setUpdatedAt(Instant.now());
-                subscriptionRepository.saveAndFlush(locked);
-                successCount.incrementAndGet();
+                transactionTemplate.executeWithoutResult(status -> {
+                    Subscription locked = subscriptionRepository.findByIdForUpdate(subscriptionId).orElseThrow();
+                    if (!staleVersion.equals(locked.getVersion())) {
+                        conflictCount.incrementAndGet();
+                        return;
+                    }
+                    Plan pro = planRepository.findByCode("PRO").orElseThrow();
+                    locked.setPlan(pro);
+                    locked.setUpdatedAt(Instant.now());
+                    subscriptionRepository.saveAndFlush(locked);
+                    successCount.incrementAndGet();
+                });
             } catch (Exception e) {
                 conflictCount.incrementAndGet();
             }

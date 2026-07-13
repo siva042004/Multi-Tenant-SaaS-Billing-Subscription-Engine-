@@ -1,5 +1,15 @@
 package com.billing.service;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+
 import com.billing.entity.Invoice;
 import com.billing.entity.Plan;
 import com.billing.entity.Subscription;
@@ -8,17 +18,6 @@ import com.billing.repository.InvoiceRepository;
 import com.billing.repository.PlanRepository;
 import com.billing.repository.SubscriptionRepository;
 import com.billing.repository.TenantRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Covers the "failed payment" and "webhook redelivery / idempotency" edge
@@ -38,17 +37,22 @@ class StripeWebhookServiceTest {
 
     @BeforeEach
     void setup() {
-        Tenant tenant = tenantRepository.save(new Tenant("Globex", "billing@globex.test", "cus_globex"));
-        Plan plan = planRepository.save(new Plan("PRO", "price_pro_2", "Pro", new BigDecimal("99.00"), 25));
+        Tenant tenant = tenantRepository.findByStripeCustomerId("cus_globex")
+                .orElseGet(() -> tenantRepository.save(new Tenant("Globex Test", "billing@globex.test", "cus_globex")));
+        Plan plan = planRepository.findByCode("PRO")
+                .orElseGet(() -> planRepository.save(new Plan("PRO", "price_pro_2", "Pro", new BigDecimal("99.00"), 25)));
 
-        Subscription sub = new Subscription();
-        sub.setTenant(tenant);
-        sub.setPlan(plan);
-        sub.setStripeSubscriptionId("sub_globex_1");
-        sub.setStatus(Subscription.Status.ACTIVE);
-        sub.setCurrentPeriodStart(Instant.now());
-        sub.setCurrentPeriodEnd(Instant.now().plusSeconds(2592000));
-        subscription = subscriptionRepository.save(sub);
+        subscription = subscriptionRepository.findByStripeSubscriptionId("sub_globex_1")
+                .orElseGet(() -> {
+                    Subscription sub = new Subscription();
+                    sub.setTenant(tenant);
+                    sub.setPlan(plan);
+                    sub.setStripeSubscriptionId("sub_globex_1");
+                    sub.setStatus(Subscription.Status.ACTIVE);
+                    sub.setCurrentPeriodStart(Instant.now());
+                    sub.setCurrentPeriodEnd(Instant.now().plusSeconds(2592000));
+                    return subscriptionRepository.save(sub);
+                });
     }
 
     @Test

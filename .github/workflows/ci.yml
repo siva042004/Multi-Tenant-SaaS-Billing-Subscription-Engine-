@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   backend-test:
     runs-on: ubuntu-latest
@@ -44,7 +48,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm install --legacy-peer-deps
+        run: npm ci --legacy-peer-deps
 
       - name: Run frontend tests
         working-directory: frontend
