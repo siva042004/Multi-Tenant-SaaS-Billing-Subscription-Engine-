@@ -1,0 +1,9 @@
+POST http://localhost:8081/api/tenants
+Content-Type: application/json
+
+{
+  "name": "Acme Technologies",
+  "email": "admin@acme.com",
+  "planCode": "BASIC",
+  "paymentMethodId": "pm_card_visa"
+}

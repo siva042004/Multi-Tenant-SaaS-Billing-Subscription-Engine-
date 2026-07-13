@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-backend
+  namespace: billing-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: billing-backend
+  template:
+    metadata:
+      labels:
+        app: billing-backend
+    spec:
+      containers:
+        - name: billing-backend
+          image: your-registry/billing-backend:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: billing-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: billing-secrets
+                  key: DB_PASSWORD
+            - name: STRIPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: billing-secrets
+                  key: STRIPE_API_KEY
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: billing-secrets
+                  key: STRIPE_WEBHOOK_SECRET
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: 1000m, memory: 1024Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-backend
+  namespace: billing-engine
+spec:
+  selector:
+    app: billing-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: billing-backend-hpa
+  namespace: billing-engine
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: billing-backend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

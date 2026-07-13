@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-frontend
+  namespace: billing-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: billing-frontend
+  template:
+    metadata:
+      labels:
+        app: billing-frontend
+    spec:
+      containers:
+        - name: billing-frontend
+          image: your-registry/billing-frontend:latest
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 300m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-frontend
+  namespace: billing-engine
+spec:
+  selector:
+    app: billing-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: billing-ingress
+  namespace: billing-engine
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600" # keep SSE streams alive
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: billing.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: billing-backend
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: billing-frontend
+                port:
+                  number: 80
