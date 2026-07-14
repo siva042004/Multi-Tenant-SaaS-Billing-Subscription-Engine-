@@ -43,7 +43,9 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          # react-scripts 5's Jest runner is not compatible with Node 24.
+          # Use the current LTS release to keep the frontend test environment stable.
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
